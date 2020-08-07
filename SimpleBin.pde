@@ -94,4 +94,21 @@ public static class SimpleBin implements BitStream {
     binNullIndex = -1;
   }
   
+  public float getTheoreticalRawKeyRate(float p) {
+    float pik = 1-pow(1-p,binSize);
+    if(binSize==frameSize) {
+      return 0;
+    } else if(binSize==frameSize/2) {
+      return pik*(1-pik)/binSize;
+    } else {
+      return (pik*pow((1-pik),frameSize/binSize-1)+
+              (1-pik)*pow(pik,frameSize/binSize-1))
+              /binSize*log(frameSize/binSize)/log(2);
+    }
+  }
+  
+  public String getAbbreviation() {
+    return "SB, k="+binSize;
+  }
+  
 }

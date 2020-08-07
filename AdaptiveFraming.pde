@@ -71,4 +71,43 @@ public static class AdaptiveFraming extends SimpleBin {
     }
   }
   
+  public float getTheoreticalRawKeyRate(float p) {
+    int n = frameSize;
+    
+    if(n>32) { // above n=32 we start to suffer from underflow AND overflow, and need to use BigDecimal and BigInteger together
+      BigDecimal rate = BigDecimal.ZERO;
+      for(int l=1;l<=n-1;l++) {
+        int r = n%((l<=n/2)?l:(n-l));
+        int m = n/((l<=n/2)?l:(n-l));
+        double rho = (r*Math.log(m+1)+((l<=n/2)?(l-r):(n-l-r))*Math.log(m))/Math.log(2);
+        rate = rate.add(
+          new BigDecimal(choose(n,l))
+          .multiply(new BigDecimal(rho))
+          .multiply(new BigDecimal(p).pow(l))
+          .multiply(new BigDecimal(1-p).pow(n-l)));
+      }
+      rate = rate.divide(new BigDecimal(n));
+      return rate.floatValue();
+    }
+    
+    double rate = 0;
+    for(int l=1;l<=n-1;l++) {
+      int r = n%((l<=n/2)?l:(n-l));
+      int m = n/((l<=n/2)?l:(n-l));
+      double rho = (r*Math.log(m+1)+((l<=n/2)?(l-r):(n-l-r))*Math.log(m))/Math.log(2);
+      rate += choose(n,l).intValue()*rho*Math.pow(p,l)*Math.pow(1-p,n-l);
+      /*
+      double term = choose(n,l)*rho;
+      term = Math.log(term)+(n-l)*Math.log(1-p)+l*Math.log(p)+Math.log(10)*n;
+      rate += Double.isNaN(term)?0:(Math.exp(term)/Math.pow(10,n));
+      //rate += term;
+      */
+    }
+    return (float)(rate/n);
+  }
+  
+  public String getAbbreviation() {
+    return "AF";
+  }
+  
 }

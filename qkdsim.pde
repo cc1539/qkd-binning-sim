@@ -1,12 +1,14 @@
 import java.io.*;
 import java.text.DecimalFormat;
+import java.math.BigInteger;
+import java.math.BigDecimal;
 
 // r to reset the graph
 // c to take a picture, saved within the working directory under the folder "output"
 
 // if N is -1, vary k for simple binning or vary n for other binning schemes
 // otherwise, just use the given value as n for all bins and assume a bin size of k=1 for simple binning
-public static final int N = 8;
+public static final int N = 64;
 
 // which binning schemes are we using for each k or each n
 SimpleBin[] bins = {
@@ -28,6 +30,7 @@ SimpleBin[] bins = {
 
 
 float[][] graph;
+float[][] theoreticalGraph;
 long[][][] info; // stores "experimental" raw key rate
 
 // color used for each plot
@@ -53,23 +56,26 @@ void plot(float[] data, float x, float y, float w, float h) {
   endShape();
 }
 
+void updateBinSettings(SimpleBin bin, int k, int n) {
+  if(n==-1) {
+    if(!bin.getClass().toString().equals("class qkdsim$SimpleBin")) {
+      bin.setFrameSize((int)pow(2,k+1)); // all n are powers of 2
+    } else {
+      bin.setFrameSize((int)pow(2,graph.length)); // n = 2*(maximum k)
+      bin.setBinSize((int)pow(2,k)); // all k are powers of 2
+    }
+  } else {
+    bin.setFrameSize(n);
+    bin.setBinSize(1);
+  }
+}
+
 void refineGraph(int n, int iterations) {
   
   for(int k=0;k<graph.length;k++) { // A.
   
     SimpleBin bin = bins[k];
-    
-    if(n==-1) {
-      if(!bin.getClass().toString().equals("class qkdsim$SimpleBin")) {
-        bin.setFrameSize((int)pow(2,k+1)); // all n are powers of 2
-      } else {
-        bin.setFrameSize((int)pow(2,graph.length)); // n = 2*(maximum k)
-        bin.setBinSize((int)pow(2,k)); // all k are powers of 2
-      }
-    } else {
-      bin.setFrameSize(n);
-      bin.setBinSize(1);
-    }
+    updateBinSettings(bin,k,n);
     
     for(int i=0;i<graph[0].length;i++) { // B.
       
@@ -112,6 +118,67 @@ void refineGraph(int n, int iterations) {
   
 }
 
+void calculateTheoreticalGraph(int n) {
+  
+  for(int k=0;k<graph.length;k++) { // A.
+  
+    SimpleBin bin = bins[k];
+    updateBinSettings(bin,k,n);
+    
+    for(int i=0;i<theoreticalGraph[0].length;i++) { // B.
+      float p = ((float)i/theoreticalGraph[0].length);
+      float entropy = (-p*log(p)-(1-p)*log(1-p))/log(2);
+      theoreticalGraph[k][i] = bin.getTheoreticalRawKeyRate(p)/entropy;
+    }
+    
+  }
+  
+}
+
+// math functions for calculation of theoretical raw key rates
+public static int log2ceil(float l) {
+  int log2 = 0;
+  for(int i=1;i<l;i*=2) {
+    log2++;
+  }
+  return log2;
+}
+
+public static int log2floor(float l) {
+  int log2 = 0;
+  for(int i=1;i<l;i*=2) {
+    log2++;
+  }
+  return log2-(pow(2,log2)==l?0:1);
+  //return floor(log(l)/log(2));
+}
+
+public static BigInteger perm(int n, int k) {
+  BigInteger a = BigInteger.ONE;
+  for(long i=k+1;i<=n;i++) {
+    a = a.multiply(new BigInteger(i+""));
+  }
+  return a;
+}
+
+public static BigInteger choose(int n, int k) {
+  BigInteger a = perm(n,k);
+  BigInteger b = perm(n,n-k);
+  return (a.multiply(b).divide(perm(n,1)));
+}
+
+public void drawLegend(float x, float y) {
+  for(int i=0;i<bins.length;i++) {
+    noStroke();
+    fill(palette[i]);
+    rect(x,y,10,10);
+    fill(255);
+    textAlign(LEFT,CENTER);
+    text(bins[i].getAbbreviation(),x+13,y+4);
+    y += 14;
+  }
+}
+
 void setup() {
   size(1040,840);
   noSmooth();
@@ -120,7 +187,14 @@ void setup() {
   //    OR frame size n in the case of the adaptive binning schemes
   // B. second dimension corresponds to probability of photon detection in any one time unit
   graph = new float[bins.length][width];
+  theoreticalGraph = new float[bins.length][width];
   info = new long[graph.length][width][2];
+  
+  new Thread(){public void run(){
+    println("calculating theoretical graphs...");
+    calculateTheoreticalGraph(N);
+    println("theoretical graphs calculated");
+  }}.start();
   
   new Thread(){public void run(){
     while(true) {
@@ -146,7 +220,7 @@ void keyPressed() {
       }
     } break;
     case 'c': { // camera
-      saveFrame("output/out.png");
+      saveFrame("output/####.png");
     } break;
   }
 }
@@ -162,37 +236,79 @@ void draw() {
   background(0);
   noFill();
   
-  float border = 50; // margin of 50px from the edge of the screen
+  float border = 75; // margin of 50px from the edge of the screen
   
-  // draw the background
-  stroke(255);
-  line(border,border,border,height-border);
-  line(border,height-border,width-border,height-border);
-  fill(255);
-  DecimalFormat df = new DecimalFormat("#.#");
+  // draw the grid
+  stroke(64);
   for(float i=0;i<=1;i+=.1) {
     float y = height-border-(height-border*2)*scale*i;
-    line(border-5,y,border,y);
-    textAlign(RIGHT,CENTER);
-    text(df.format(i),border-7,y);
+    if(scale*i>1.01) {
+      continue;
+    }
+    line(border,y,width-border,y);
   }
   for(float i=0;i<=1;i+=.1) {
     float x = border+(width-border*2)*i;
-    line(x,height-border+5,x,height-border);
-    textAlign(CENTER,TOP);
-    text(df.format(i),x,height-border+7);
+    line(x,height-border,x,border);
   }
   
   // actually draw the graph
   noFill();
   for(int k=0;k<graph.length;k++) {
-    stroke(palette[k]);
-    plot(graph[k],
-      border,
-      height-border,
-      width-border*2,
-      -scale*(height-border*2));
+    
+    float x = border;
+    float y = height-border;
+    float w = width-border*2;
+    float h = -scale*(height-border*2);
+    
+    if(keyPressed && key=='s') {
+      stroke(lerpColor(palette[k],color(0),.5));
+      plot(graph[k],x,y,w,h);
+      stroke(palette[k]);
+      plot(theoreticalGraph[k],x,y,w,h);
+    } else {
+      stroke(palette[k]);
+      plot(graph[k],x,y,w,h);
+    }
+    
   }
+  
+  // draw the tick marks
+  stroke(255);
+  line(border-1,border,border-1,height-border);
+  line(border,height-border+1,width-border,height-border+1);
+  fill(255);
+  DecimalFormat df = new DecimalFormat("#.#");
+  for(float i=0;i<=1.01;i+=.1) {
+    float y = height-border-(height-border*2)*scale*i;
+    if(scale*i>1.01) {
+      continue;
+    }
+    line(border-5-1,y,border-1,y);
+    textAlign(RIGHT,CENTER);
+    text(df.format(i),border-7,y);
+  }
+  for(float i=0;i<=1.01;i+=.1) {
+    float x = border+(width-border*2)*i;
+    line(x,height-border+5+1,x,height-border+1);
+    textAlign(CENTER,TOP);
+    text(df.format(i),x,height-border+7);
+  }
+  
+  // draw the legend
+  drawLegend(mouseX,mouseY);
+  
+  // label the graph
+  fill(255);
+  textAlign(CENTER,TOP);
+  text("Probability (p)",width/2,height-border+30);
+  textAlign(CENTER,BOTTOM);
+  text("n = "+N,width/2,border-10);
+  pushMatrix();
+  translate(border-30,height/2);
+  rotate(-HALF_PI);
+  text("Photon Utilization (r/h(p))",0,-10);
+  popMatrix();
   
   surface.setTitle("FPS: "+frameRate);
 }
