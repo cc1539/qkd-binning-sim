@@ -4,6 +4,13 @@ public static class AdaptiveBin extends SimpleBin {
   private final BitBuffer memory = new BitBuffer(true);
   
   public void write(boolean bit) {
+    if(refractoryTimeout>0) {
+      refractoryTimeout--;
+      bit = false;
+    }
+    if(bit) {
+      refractoryTimeout = refractoryPeriod;
+    }
     //memory.remember = true;
     memory.write(bit);
     if(++bitIndex>=frameSize) {

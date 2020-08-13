@@ -117,4 +117,17 @@ public static class BitBuffer implements BitStream {
     readIndex = index;
   }
   
+  public boolean[] toBooleanArray() {
+    boolean[] array = new boolean[readyLength()];
+    int index = 0;
+    while(ready()) {
+      array[index++] = read();
+    }
+    return array;
+  }
+  
+  public int readyLength() {
+    return writeIndex-readIndex;
+  }
+  
 }

@@ -41,9 +41,16 @@ public static class AdaptiveFraming extends SimpleBin {
   }
   
   public void write(boolean bit) {
+    if(refractoryTimeout>0) {
+      refractoryTimeout--;
+      bit = false;
+    }
     //memory.remember = true;
     memory.write(bit);
-    if(bit) { l++; } // count photon
+    if(bit) {
+      refractoryTimeout = refractoryPeriod;
+      l++; // count photon
+    } 
     if(++bitIndex>=frameSize) {
       bitIndex = 0;
       

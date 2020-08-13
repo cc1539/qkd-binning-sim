@@ -12,6 +12,9 @@ public static class SimpleBin implements BitStream {
   protected int binNullIndex = -1; // the position of the last empty bin, or -2 if we saw more than one empty bin
   protected boolean discarded; // whether the frame was just discarded at the last bit write
   
+  protected int refractoryPeriod;
+  protected int refractoryTimeout;
+  
   // literal output of the binning scheme
   protected final BitBuffer out = new BitBuffer();
   
@@ -23,12 +26,20 @@ public static class SimpleBin implements BitStream {
     this.binSize = binSize;
   }
   
+  public void setRefractoryPeriod(int time) {
+    refractoryPeriod = time;
+  }
+  
   public int getFrameSize() {
     return frameSize;
   }
   
   public int getBinSize() {
     return binSize;
+  }
+  
+  public int getRefractoryPeriod() {
+    return refractoryPeriod;
   }
   
   public boolean ready() {
@@ -40,8 +51,13 @@ public static class SimpleBin implements BitStream {
   }
   
   public void write(boolean bit) {
+    if(refractoryTimeout>0) {
+      refractoryTimeout--;
+      bit = false;
+    }
     discarded = false;
     if(bit) {
+      refractoryTimeout = refractoryPeriod;
       binOccupied = true;
     }
     if(++bitIndex>=binSize) {

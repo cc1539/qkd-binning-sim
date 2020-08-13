@@ -11,10 +11,15 @@ public static class AdaptiveAggregatedBin extends SimpleBin {
   }
   
   public void write(boolean bit) {
+    if(refractoryTimeout>0) {
+      refractoryTimeout--;
+      bit = false;
+    }
     //memory.remember = true;
     memory.write(bit);
     if(bit) {
-      l++;
+      refractoryTimeout = refractoryPeriod;
+      l++; // count photon
     }
     if(++bitIndex>=frameSize) {
       bitIndex = 0;

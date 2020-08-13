@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 
 // if N is -1, vary k for simple binning or vary n for other binning schemes
 // otherwise, just use the given value as n for all bins and assume a bin size of k=1 for simple binning
-public static final int N = 64;
+public static final int N = 32;
 
 // which binning schemes are we using for each k or each n
 SimpleBin[] bins = {
@@ -28,10 +28,14 @@ SimpleBin[] bins = {
   */
 };
 
-
 float[][] graph;
 float[][] theoreticalGraph;
 long[][][] info; // stores "experimental" raw key rate
+
+double[][] randomInfo;
+BitBuffer[][] outputMemory;
+float[][] randomGraph;
+long[][] randomSamples;
 
 // color used for each plot
 color[] palette = {
@@ -87,6 +91,8 @@ void refineGraph(int n, int iterations) {
       
       float entropy = (-p*log(p)-(1-p)*log(1-p))/log(2);
       
+      //BitBuffer memory = new BitBuffer();
+      
       for(int j=0;j<iterations;j++) {
         
         {
@@ -101,6 +107,8 @@ void refineGraph(int n, int iterations) {
         // for now, all we're concerned with is counting the bits.
         while(bin.ready()) {
           boolean bit = bin.read();
+          //memory.write(bit);
+          outputMemory[k][i].write(bit);
           //print(bit?'1':'.');
           rawBits++;
         }
@@ -110,8 +118,22 @@ void refineGraph(int n, int iterations) {
       info[k][i][0] = bitsSent;
       info[k][i][1] = rawBits;
       
-      graph[k][i] = bitsSent==0?0:(float)((double)rawBits/bitsSent/entropy);;
+      graph[k][i] = bitsSent==0?0:(float)((double)rawBits/bitsSent/entropy);
       //println(graph[i]);
+      
+      if(outputMemory[k][i].readyLength()>=4096) {
+        boolean[] output = outputMemory[k][i].toBooleanArray();
+        if(output.length>0) {
+          double randomness = entropy(statisticalRandomness(output))*structuralRandomness(output);
+          if(Double.isNaN(randomness)) {
+            randomness = 0;
+          }
+          randomInfo[k][i] += randomness;
+          randomSamples[k][i]++;
+          randomGraph[k][i] = (float)(randomInfo[k][i]/randomSamples[k][i]);
+        }
+      }
+      
     }
     
   }
@@ -190,6 +212,16 @@ void setup() {
   theoreticalGraph = new float[bins.length][width];
   info = new long[graph.length][width][2];
   
+  randomInfo = new double[bins.length][width];
+  randomGraph = new float[bins.length][width];
+  randomSamples = new long[bins.length][width];
+  outputMemory = new BitBuffer[bins.length][width];
+  for(int i=0;i<bins.length;i++) {
+  for(int j=0;j<width;j++) {
+    outputMemory[i][j] = new BitBuffer();
+  }
+  }
+  
   new Thread(){public void run(){
     println("calculating theoretical graphs...");
     calculateTheoreticalGraph(N);
@@ -218,9 +250,26 @@ void keyPressed() {
       }
       }
       }
+      for(int i=0;i<randomInfo.length;i++) {
+      for(int j=0;j<randomInfo[0].length;j++) {
+        randomInfo[i][j] = 0;
+        randomGraph[i][j] = 0;
+        randomSamples[i][j] = 0;
+        outputMemory[i][j].clear();
+      }
+      }
     } break;
     case 'c': { // camera
       saveFrame("output/####.png");
+    } break;
+    default: {
+      if(key>='0' && key<='9') {
+        int time = floor(pow(2,key-'0'-1));
+        // set refractory periods
+        for(int i=0;i<bins.length;i++) {
+          bins[i].setRefractoryPeriod(time);
+        }
+      }
     } break;
   }
 }
@@ -230,7 +279,8 @@ void draw() {
   // allow viewer to scale the graph vertically using the mouse
   // because the graph can be pretty squished at first
   if(mousePressed) {
-    scale = (1-(float)mouseY/height)*(mouseButton==LEFT?20:5);
+    //scale = (1-(float)mouseY/height)*(mouseButton==LEFT?20:5);
+    scale *= exp((mouseY-pmouseY)*-1e-2);
   }
   
   background(0);
@@ -262,13 +312,19 @@ void draw() {
     float h = -scale*(height-border*2);
     
     if(keyPressed && key=='s') {
+      /*
       stroke(lerpColor(palette[k],color(0),.5));
       plot(graph[k],x,y,w,h);
       stroke(palette[k]);
       plot(theoreticalGraph[k],x,y,w,h);
+      */
+      stroke(palette[k]);
+      plot(randomGraph[k],x,y,w,h);
     } else {
+      
       stroke(palette[k]);
       plot(graph[k],x,y,w,h);
+      
     }
     
   }
@@ -303,11 +359,18 @@ void draw() {
   textAlign(CENTER,TOP);
   text("Probability (p)",width/2,height-border+30);
   textAlign(CENTER,BOTTOM);
-  text("n = "+N,width/2,border-10);
+  ArrayList<String> info = new ArrayList<String>();
+  info.add("n = "+((N==-1)?(int)pow(2,bins.length):N));
+  info.add("d.t. = "+bins[0].refractoryPeriod+" units");
+  text(String.join(" , ",info),width/2,border-10);
   pushMatrix();
   translate(border-30,height/2);
   rotate(-HALF_PI);
-  text("Photon Utilization (r/h(p))",0,-10);
+  if(keyPressed && key=='s') {
+    text("Randomness",0,-10);
+  } else {
+    text("Photon Utilization (r/h(p))",0,-10);
+  }
   popMatrix();
   
   surface.setTitle("FPS: "+frameRate);
