@@ -32,10 +32,8 @@ float[][] graph;
 float[][] theoreticalGraph;
 long[][][] info; // stores "experimental" raw key rate
 
-double[][] randomInfo;
-BitBuffer[][] outputMemory;
+RandomBitStream[][] randomInfo;
 float[][] randomGraph;
-long[][] randomSamples;
 
 // color used for each plot
 color[] palette = {
@@ -108,7 +106,8 @@ void refineGraph(int n, int iterations) {
         while(bin.ready()) {
           boolean bit = bin.read();
           //memory.write(bit);
-          outputMemory[k][i].write(bit);
+          //outputMemory[k][i].write(bit);
+          randomInfo[k][i].write(bit);
           //print(bit?'1':'.');
           rawBits++;
         }
@@ -119,21 +118,7 @@ void refineGraph(int n, int iterations) {
       info[k][i][1] = rawBits;
       
       graph[k][i] = bitsSent==0?0:(float)((double)rawBits/bitsSent/entropy);
-      //println(graph[i]);
-      
-      if(outputMemory[k][i].readyLength()>=4096) {
-        boolean[] output = outputMemory[k][i].toBooleanArray();
-        if(output.length>0) {
-          double randomness = entropy(statisticalRandomness(output))*structuralRandomness(output);
-          if(Double.isNaN(randomness)) {
-            randomness = 0;
-          }
-          randomInfo[k][i] += randomness;
-          randomSamples[k][i]++;
-          randomGraph[k][i] = (float)(randomInfo[k][i]/randomSamples[k][i]);
-        }
-      }
-      
+      randomGraph[k][i] = randomInfo[k][i].getRandomness();
     }
     
   }
@@ -157,53 +142,10 @@ void calculateTheoreticalGraph(int n) {
   
 }
 
-// math functions for calculation of theoretical raw key rates
-public static int log2ceil(float l) {
-  int log2 = 0;
-  for(int i=1;i<l;i*=2) {
-    log2++;
-  }
-  return log2;
-}
-
-public static int log2floor(float l) {
-  int log2 = 0;
-  for(int i=1;i<l;i*=2) {
-    log2++;
-  }
-  return log2-(pow(2,log2)==l?0:1);
-  //return floor(log(l)/log(2));
-}
-
-public static BigInteger perm(int n, int k) {
-  BigInteger a = BigInteger.ONE;
-  for(long i=k+1;i<=n;i++) {
-    a = a.multiply(new BigInteger(i+""));
-  }
-  return a;
-}
-
-public static BigInteger choose(int n, int k) {
-  BigInteger a = perm(n,k);
-  BigInteger b = perm(n,n-k);
-  return (a.multiply(b).divide(perm(n,1)));
-}
-
-public void drawLegend(float x, float y) {
-  for(int i=0;i<bins.length;i++) {
-    noStroke();
-    fill(palette[i]);
-    rect(x,y,10,10);
-    fill(255);
-    textAlign(LEFT,CENTER);
-    text(bins[i].getAbbreviation(),x+13,y+4);
-    y += 14;
-  }
-}
-
 void setup() {
   size(1040,840);
   noSmooth();
+  
   
   // A. first dimension corresponds to bin size k in the case of simple binning
   //    OR frame size n in the case of the adaptive binning schemes
@@ -212,15 +154,14 @@ void setup() {
   theoreticalGraph = new float[bins.length][width];
   info = new long[graph.length][width][2];
   
-  randomInfo = new double[bins.length][width];
+  randomInfo = new RandomBitStream[bins.length][width];
   randomGraph = new float[bins.length][width];
-  randomSamples = new long[bins.length][width];
-  outputMemory = new BitBuffer[bins.length][width];
   for(int i=0;i<bins.length;i++) {
   for(int j=0;j<width;j++) {
-    outputMemory[i][j] = new BitBuffer();
+    randomInfo[i][j] = new RandomBitStream();
   }
   }
+  
   
   new Thread(){public void run(){
     println("calculating theoretical graphs...");
@@ -240,69 +181,62 @@ void setup() {
   }}.start();
 }
 
+void reset() {
+  for(int i=0;i<info.length;i++) {
+  for(int j=0;j<info[0].length;j++) {
+  for(int k=0;k<info[0][0].length;k++) {
+    info[i][j][k] = 0;
+  }
+  }
+  }
+  for(int i=0;i<randomInfo.length;i++) {
+  for(int j=0;j<randomInfo[0].length;j++) {
+    randomGraph[i][j] = 0;
+    randomInfo[i][j].clear();
+  }
+  }
+}
+
+void setRefractoryPeriod(int time) {
+  if(time!=bins[0].getRefractoryPeriod()) {
+    for(int i=0;i<bins.length;i++) {
+      bins[i].setRefractoryPeriod(time);
+    }
+    reset();
+  }
+}
+
 void keyPressed() {
-  switch(key) {
-    case 'r': { // reset
-      for(int i=0;i<info.length;i++) {
-      for(int j=0;j<info[0].length;j++) {
-      for(int k=0;k<info[0][0].length;k++) {
-        info[i][j][k] = 0;
-      }
-      }
-      }
-      for(int i=0;i<randomInfo.length;i++) {
-      for(int j=0;j<randomInfo[0].length;j++) {
-        randomInfo[i][j] = 0;
-        randomGraph[i][j] = 0;
-        randomSamples[i][j] = 0;
-        outputMemory[i][j].clear();
-      }
-      }
+  switch(keyCode) {
+    case RIGHT: {
+      setRefractoryPeriod(bins[0].getRefractoryPeriod()+1);
     } break;
-    case 'c': { // camera
-      saveFrame("output/####.png");
+    case LEFT: {
+      setRefractoryPeriod(bins[0].getRefractoryPeriod()-1);
     } break;
     default: {
-      if(key>='0' && key<='9') {
-        int time = floor(pow(2,key-'0'-1));
-        // set refractory periods
-        for(int i=0;i<bins.length;i++) {
-          bins[i].setRefractoryPeriod(time);
+      if(key!=CODED) {
+        switch(key) {
+          case 'r': { // reset
+            reset();
+          } break;
+          case 'c': { // camera
+            saveFrame("output/####.png");
+          } break;
+          default: {
+            if(key>='0' && key<='9') {
+              int time = floor(pow(2,key-'0'-1));
+              // set refractory periods
+              setRefractoryPeriod(time);
+            }
+          } break;
         }
       }
     } break;
   }
 }
 
-void draw() {
-  
-  // allow viewer to scale the graph vertically using the mouse
-  // because the graph can be pretty squished at first
-  if(mousePressed) {
-    //scale = (1-(float)mouseY/height)*(mouseButton==LEFT?20:5);
-    scale *= exp((mouseY-pmouseY)*-1e-2);
-  }
-  
-  background(0);
-  noFill();
-  
-  float border = 75; // margin of 50px from the edge of the screen
-  
-  // draw the grid
-  stroke(64);
-  for(float i=0;i<=1;i+=.1) {
-    float y = height-border-(height-border*2)*scale*i;
-    if(scale*i>1.01) {
-      continue;
-    }
-    line(border,y,width-border,y);
-  }
-  for(float i=0;i<=1;i+=.1) {
-    float x = border+(width-border*2)*i;
-    line(x,height-border,x,border);
-  }
-  
-  // actually draw the graph
+public void drawGraph(float border) {
   noFill();
   for(int k=0;k<graph.length;k++) {
     
@@ -311,25 +245,36 @@ void draw() {
     float w = width-border*2;
     float h = -scale*(height-border*2);
     
-    if(keyPressed && key=='s') {
-      /*
+    if(keyPressed && key=='z') {
       stroke(lerpColor(palette[k],color(0),.5));
       plot(graph[k],x,y,w,h);
       stroke(palette[k]);
       plot(theoreticalGraph[k],x,y,w,h);
-      */
+    } else if(keyPressed && key=='x') {
       stroke(palette[k]);
       plot(randomGraph[k],x,y,w,h);
     } else {
-      
       stroke(palette[k]);
       plot(graph[k],x,y,w,h);
-      
     }
     
   }
+}
+
+public void drawLegend(float x, float y) {
+  for(int i=0;i<bins.length;i++) {
+    noStroke();
+    fill(palette[i]);
+    rect(x,y,10,10);
+    fill(255);
+    textAlign(LEFT,CENTER);
+    text(bins[i].getAbbreviation(),x+13,y+4);
+    y += 14;
+  }
+}
+
+public void drawGrid(float border) {
   
-  // draw the tick marks
   stroke(255);
   line(border-1,border,border-1,height-border);
   line(border,height-border+1,width-border,height-border+1);
@@ -351,10 +296,23 @@ void draw() {
     text(df.format(i),x,height-border+7);
   }
   
-  // draw the legend
-  drawLegend(mouseX,mouseY);
+  // draw the grid
+  stroke(64);
+  for(float i=0;i<=1;i+=.1) {
+    float y = height-border-(height-border*2)*scale*i;
+    if(scale*i>1.01) {
+      continue;
+    }
+    line(border,y,width-border,y);
+  }
+  for(float i=0;i<=1;i+=.1) {
+    float x = border+(width-border*2)*i;
+    line(x,height-border,x,border);
+  }
   
-  // label the graph
+}
+
+public void drawLabel(float border) {
   fill(255);
   textAlign(CENTER,TOP);
   text("Probability (p)",width/2,height-border+30);
@@ -366,12 +324,26 @@ void draw() {
   pushMatrix();
   translate(border-30,height/2);
   rotate(-HALF_PI);
-  if(keyPressed && key=='s') {
-    text("Randomness",0,-10);
-  } else {
-    text("Photon Utilization (r/h(p))",0,-10);
-  }
+  text((keyPressed && key=='x')?"Randomness":"Photon Utilization (r/h(p))",0,-10);
   popMatrix();
+}
+
+void draw() {
+  
+  // allow viewer to scale the graph vertically using the mouse
+  // because the graph can be pretty squished at first
+  if(mousePressed) {
+    scale *= exp((mouseY-pmouseY)*-1e-2);
+  }
+  
+  background(0);
+  noFill();
+  
+  float border = 75; // margin of 50px from the edge of the screen
+  drawGrid(border); // draw the tick marks
+  drawGraph(border); // actually draw the graph
+  drawLegend(mouseX,mouseY);  // draw the legend
+  drawLabel(border); // label the graph
   
   surface.setTitle("FPS: "+frameRate);
 }

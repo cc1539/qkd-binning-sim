@@ -45,16 +45,16 @@ public static class AdaptiveBin extends SimpleBin {
     float rate = 0;
     
     for(int l=1;l<=n/2;l++) {
-      for(int i=log2ceil(l);i<=log2ceil(n/2);i++) {
+      for(int i=CommonMath.log2ceil(l);i<=CommonMath.log2ceil(n/2);i++) {
         int pow2i = (int)pow(2,i);
-        rate += choose(pow2i,l).intValue()*pow(p,l)*pow(1-p,n-l)/pow2i;
+        rate += CommonMath.choose(pow2i,l).intValue()*pow(p,l)*pow(1-p,n-l)/pow2i;
       }
     }
     
-    for(int i=0;i<=log2ceil(n/4);i++) {
+    for(int i=0;i<=CommonMath.log2ceil(n/4);i++) {
       int pow2i = (int)pow(2,i);
       float pi2i = 1-pow(1-p,pow2i);
-      rate += pow(pi2i,n/pow2i-1)*(1-pi2i)*(log2ceil(n)-i)/pow2i;
+      rate += pow(pi2i,n/pow2i-1)*(1-pi2i)*(CommonMath.log2ceil(n)-i)/pow2i;
     }
     return rate;
   }
