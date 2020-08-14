@@ -1,6 +1,10 @@
 
 public static class CommonMath {
   
+  public static double entropy(double p) {
+    return (p>0&&p<1)?(-(p*Math.log(p)+(1-p)*Math.log(1-p))/Math.log(2)):0;
+  }
+  
   // math functions for calculation of theoretical raw key rates
   public static int log2ceil(float l) {
     int log2 = 0;

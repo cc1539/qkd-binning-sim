@@ -87,7 +87,7 @@ void refineGraph(int n, int iterations) {
       // send in an arbitrary amount of bits, the more bits the more precise and hopefully accurate the figure
       float p = ((float)i/graph[0].length);
       
-      float entropy = (-p*log(p)-(1-p)*log(1-p))/log(2);
+      //float entropy = (-p*log(p)-(1-p)*log(1-p))/log(2);
       
       //BitBuffer memory = new BitBuffer();
       
@@ -96,19 +96,14 @@ void refineGraph(int n, int iterations) {
         {
           boolean bit = Math.random()<p;
           bin.write(bit);
-          //if(bit) { // only count photons, ignore empty time units . . . or not?
-            bitsSent++;
-          //}
+          bitsSent++; // count all bits sent, whether '1' or '0'
         }
         
         // extract the bits using the chosen binning scheme.
         // for now, all we're concerned with is counting the bits.
         while(bin.ready()) {
           boolean bit = bin.read();
-          //memory.write(bit);
-          //outputMemory[k][i].write(bit);
           randomInfo[k][i].write(bit);
-          //print(bit?'1':'.');
           rawBits++;
         }
         
@@ -117,6 +112,7 @@ void refineGraph(int n, int iterations) {
       info[k][i][0] = bitsSent;
       info[k][i][1] = rawBits;
       
+      float entropy = (keyPressed&&key=='a'?1:(float)CommonMath.entropy(p)); // if pressing a, just show raw key rate
       graph[k][i] = bitsSent==0?0:(float)((double)rawBits/bitsSent/entropy);
       randomGraph[k][i] = randomInfo[k][i].getRandomness();
     }
@@ -324,7 +320,10 @@ public void drawLabel(float border) {
   pushMatrix();
   translate(border-30,height/2);
   rotate(-HALF_PI);
-  text((keyPressed && key=='x')?"Randomness":"Photon Utilization (r/h(p))",0,-10);
+  text((keyPressed && key=='x')?
+    "Randomness":(keyPressed && key=='a')?
+    "Raw key rate":
+    "Photon Utilization (r/h(p))",0,-10);
   popMatrix();
 }
 
@@ -333,7 +332,11 @@ void draw() {
   // allow viewer to scale the graph vertically using the mouse
   // because the graph can be pretty squished at first
   if(mousePressed) {
-    scale *= exp((mouseY-pmouseY)*-1e-2);
+    if(mouseButton==LEFT) {
+      scale *= exp((mouseY-pmouseY)*-1e-2);
+    } else if(mouseButton==RIGHT) {
+      
+    }
   }
   
   background(0);
